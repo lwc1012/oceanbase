@@ -24,6 +24,7 @@ public:
   virtual ~UpdateLogicalOperator() = default;
 
   LogicalOperatorType type() const override { return LogicalOperatorType::UPDATE; }
+  OpType get_op_type() const override { return OpType::LOGICALUPDATE; }
 
   UpdateStmt *update_stmt() const { return update_stmt_; }
 

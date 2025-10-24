@@ -26,6 +26,7 @@ public:
   virtual ~UpdatePhysicalOperator() = default;
 
   PhysicalOperatorType type() const override { return PhysicalOperatorType::UPDATE; }
+  OpType get_op_type() const override { return OpType::UPDATE; }
   RC open(Trx *trx) override;
   RC next() override;
   RC close() override;
