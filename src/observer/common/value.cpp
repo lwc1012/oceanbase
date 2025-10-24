@@ -179,42 +179,23 @@ void Value::set_string(const char *s, int len /*= 0*/)
   }
 }
 
-Status Value::set_date(int year, int month, int day)
+void Value::set_date(int year, int month, int day)
 {
-  // 验证日期合法性
-  if (common::is_invalid_date(year, month, day)) {
-    LOG_WARN("invalid date: %d-%d-%d", year, month, day);
-    return Status::FAILURE;
-  }
-
   reset();
   attr_type_        = AttrType::DATES;
   value_.int_value_ = 10000 * year + 100 * month + day;
   length_           = sizeof(int);
-  return Status::SUCCESS;
 }
 
-Status Value::set_date(int value)
+void Value::set_date(int value)
 {
-  // 从整数值中提取年、月、日
-  int year  = value / 10000;
-  int month = (value % 10000) / 100;
-  int day   = value % 100;
-
-  // 验证日期合法性
-  if (common::is_invalid_date(year, month, day)) {
-    LOG_WARN("invalid date value: %d", value);
-    return Status::FAILURE;
-  }
-
   reset();
   attr_type_        = AttrType::DATES;
   value_.int_value_ = value;
   length_           = sizeof(int);
-  return Status::SUCCESS;
 }
 
-Status Value::set_value(const Value &value)
+void Value::set_value(const Value &value)
 {
   switch (value.attr_type_) {
     case AttrType::INTS: {
@@ -230,16 +211,12 @@ Status Value::set_value(const Value &value)
       set_boolean(value.get_boolean());
     } break;
     case AttrType::DATES: {
-      Status status = set_date(value.get_int());
-      if (status.is_failure()) {
-        return status;
-      }
+      set_date(value.get_int());
     } break;
     default: {
       ASSERT(false, "got an invalid value type");
     } break;
   }
-  return Status::SUCCESS;
 }
 
 void Value::set_string_from_other(const Value &other)

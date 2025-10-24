@@ -33,10 +33,7 @@ RC DateType::set_value_from_str(Value &val, const string &data) const
     return RC::INVALID_DATE_FORMAT;
   }
 
-  Status status = val.set_date(year, month, day);
-  if (status.is_failure()) {
-    return RC::INVALID_DATE_FORMAT;
-  }
+  val.set_date(year, month, day);
   return RC::SUCCESS;
 }
 

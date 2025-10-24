@@ -15,7 +15,6 @@ See the Mulan PSL v2 for more details. */
 #include "condition_filter.h"
 #include "common/log/log.h"
 #include "common/value.h"
-#include "common/status.h"
 #include "storage/record/record_manager.h"
 #include "storage/table/table.h"
 #include <math.h>
@@ -127,22 +126,14 @@ bool DefaultConditionFilter::filter(const Record &rec) const
     left_value.set_type(attr_type_);
     left_value.set_data(rec.data() + left_.attr_offset, left_.attr_length);
   } else {
-    Status status = left_value.set_value(left_.value);
-    if (status.is_failure()) {
-      LOG_WARN("failed to set left value");
-      return false;  // 无效日期，过滤失败
-    }
+    left_value.set_value(left_.value);
   }
 
   if (right_.is_attr) {
     right_value.set_type(attr_type_);
     right_value.set_data(rec.data() + right_.attr_offset, right_.attr_length);
   } else {
-    Status status = right_value.set_value(right_.value);
-    if (status.is_failure()) {
-      LOG_WARN("failed to set right value");
-      return false;  // 无效日期，过滤失败
-    }
+    right_value.set_value(right_.value);
   }
 
   int cmp_result = left_value.compare(right_value);
