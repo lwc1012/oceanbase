@@ -142,7 +142,20 @@ RC DefaultHandler::create_table(const char *dbname, const char *relation_name, s
   return db->create_table(relation_name, attributes, {});
 }
 
-RC DefaultHandler::drop_table(const char *dbname, const char *relation_name) { return RC::UNIMPLEMENTED; }
+RC DefaultHandler::drop_table(const char *dbname, const char *relation_name) {
+  if (nullptr == dbname || nullptr == relation_name) {
+    LOG_WARN("Invalid argument. dbname=%p, relation_name=%p", dbname, relation_name);
+    return RC::INVALID_ARGUMENT;
+  }
+
+  Db *db = find_db(dbname);
+  if (db == nullptr) {
+    LOG_WARN("Database not opened: %s", dbname);
+    return RC::SCHEMA_DB_NOT_OPENED;
+  }
+
+  return db->drop_table(relation_name);
+}
 
 Db *DefaultHandler::find_db(const char *dbname) const
 {

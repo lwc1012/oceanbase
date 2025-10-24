@@ -243,6 +243,58 @@ void Db::all_tables(vector<string> &table_names) const
   }
 }
 
+RC Db::drop_table(const char *table_name)
+{
+  RC rc = RC::SUCCESS;
+  if (common::is_blank(table_name)) {
+    LOG_WARN("Invalid table name");
+    return RC::INVALID_ARGUMENT;
+  }
+
+  // 查找表是否存在
+  auto iter = opened_tables_.find(table_name);
+  if (iter == opened_tables_.end()) {
+    LOG_WARN("Table not found: %s", table_name);
+    return RC::SCHEMA_TABLE_NOT_EXIST;
+  }
+
+  Table *table = iter->second;
+  int32_t table_id = table->table_id();
+
+  // 从内存中移除表对象
+  opened_tables_.erase(iter);
+
+  // 删除表元数据文件
+  string table_meta_path = table_meta_file(path_.c_str(), table_name);
+  if (unlink(table_meta_path.c_str()) != 0) {
+    LOG_WARN("Failed to delete table meta file: %s, error: %s", table_meta_path.c_str(), strerror(errno));
+    // 继续执行，不会因为文件删除失败而中断
+  }
+
+  // 删除表数据文件
+  string table_data_path = table_data_file(path_.c_str(), table_name);
+  if (buffer_pool_manager_->delete_file(table_data_path.c_str()) != RC::SUCCESS) {
+    LOG_WARN("Failed to delete table data file: %s", table_data_path.c_str());
+    // 继续执行
+  }
+
+  // 删除表的索引文件
+  const TableMeta &table_meta = table->table_meta();
+  for (int i = 0; i < table_meta.index_num(); ++i) {
+    const IndexMeta *index_meta = table_meta.index(i);
+    string index_file_path = table_index_file(path_.c_str(), table_name, index_meta->name());
+    if (unlink(index_file_path.c_str()) != 0) {
+      LOG_WARN("Failed to delete index file: %s, error: %s", index_file_path.c_str(), strerror(errno));
+    }
+  }
+
+  // 删除表对象
+  delete table;
+
+  LOG_INFO("Successfully dropped table: %s, table_id: %d", table_name, table_id);
+  return rc;
+}
+
 RC Db::sync()
 {
   RC rc = RC::SUCCESS;
