@@ -18,6 +18,7 @@ See the Mulan PSL v2 for more details. */
 #include "common/lang/memory.h"
 #include "common/type/attr_type.h"
 #include "common/type/data_type.h"
+#include "common/status.h"
 
 /**
  * @brief 属性的值
@@ -89,7 +90,7 @@ public:
   void set_type(AttrType type) { this->attr_type_ = type; }
   void set_data(char *data, int length);
   void set_data(const char *data, int length) { this->set_data(const_cast<char *>(data), length); }
-  void set_value(const Value &value);
+  Status set_value(const Value &value);
   void set_boolean(bool val);
 
   string to_string() const;
@@ -115,8 +116,8 @@ public:
   void set_int(int val);
   void set_float(float val);
   void set_string(const char *s, int len = 0);
-  void set_date(int year, int month, int day);
-  void set_date(int value);
+  Status set_date(int year, int month, int day);
+  Status set_date(int value);
   void set_string_from_other(const Value &other);
 
 private:
