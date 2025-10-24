@@ -75,6 +75,10 @@ RC PhysicalPlanGenerator::create(LogicalOperator &logical_operator, unique_ptr<P
       return create_plan(static_cast<DeleteLogicalOperator &>(logical_operator), oper, session);
     } break;
 
+    case LogicalOperatorType::UPDATE: {
+      return create_plan(static_cast<UpdateLogicalOperator &>(logical_operator), oper, session);
+    } break;
+
     case LogicalOperatorType::EXPLAIN: {
       return create_plan(static_cast<ExplainLogicalOperator &>(logical_operator), oper, session);
     } break;
@@ -275,6 +279,20 @@ RC PhysicalPlanGenerator::create_plan(DeleteLogicalOperator &delete_oper, unique
     oper->add_child(std::move(child_physical_oper));
   }
   return rc;
+}
+
+RC PhysicalPlanGenerator::create_plan(UpdateLogicalOperator &logical_operator, unique_ptr<PhysicalOperator> &physical_operator, Session *session)
+{
+  // 确保有子操作符
+  if (physical_operator->children().empty()) {
+    LOG_WARN("physical operator for update should have child");
+    return RC::INTERNAL;  
+  }
+
+  unique_ptr<PhysicalOperator> &child = physical_operator->children()[0];
+  physical_operator.reset(new UpdatePhysicalOperator(session->current_trx(), logical_operator.update_stmt()));
+  physical_operator->add_child(std::move(child));
+  return RC::SUCCESS;
 }
 
 RC PhysicalPlanGenerator::create_plan(ExplainLogicalOperator &explain_oper, unique_ptr<PhysicalOperator> &oper, Session* session)
