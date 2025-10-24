@@ -47,10 +47,7 @@ namespace common {
 
 inline bool is_invalid_date(int year, int month, int day)
 {
-  // 检查年份范围（通常数据库支持1900-9999年）
-  if (year < 1900 || year > 9999) {
-    return true;
-  }
+  // 移除年份范围限制，允许任何年份
 
   // 检查月份范围
   if (month < 1 || month > 12) {
