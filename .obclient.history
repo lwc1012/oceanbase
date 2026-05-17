@@ -1,0 +1,12 @@
+### 2026-05-17 08:15:47.844
+cd /root/miniob && killall observer 2>/dev/null; rm -rf miniob-db 2>/dev/null; sleep 1; ./build/bin/observer -f etc/observer.ini -P 3307 > /tmp/observer.log 2>&1 &
+### 2026-05-17 08:15:47.861
+sleep 3
+### 2026-05-17 08:15:47.862
+echo "=== observer started ==="
+### 2026-05-17 08:15:47.863
+./build/bin/obclient -h 127.0.0.1 -P 3307 -f /tmp/test_update.sql > /tmp/obclient_result.log 2>&1
+### 2026-05-17 08:15:47.865
+echo "=== obclient done ==="
+### 2026-05-17 08:15:53.955
+cat /tmp/obclient_result.log

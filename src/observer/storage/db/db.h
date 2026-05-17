@@ -29,7 +29,6 @@ See the Mulan PSL v2 for more details. */
 class Table;
 class LogHandler;
 class BufferPoolManager;
-class TrxKit;
 
 /**
  * @brief 一个DB实例负责管理一批表

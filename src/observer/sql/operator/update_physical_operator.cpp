@@ -49,7 +49,14 @@ RC UpdatePhysicalOperator::open(Trx *trx)
 
     RowTuple *row_tuple = static_cast<RowTuple *>(tuple);
     Record   &record    = row_tuple->record();
-    records_.emplace_back(std::move(record));
+    Record    record_copy;
+    rc = record_copy.copy_data(record.data(), record.len());
+    if (OB_FAIL(rc)) {
+      LOG_WARN("failed to copy record data. rc=%s", strrc(rc));
+      return rc;
+    }
+    record_copy.set_rid(record.rid());
+    records_.emplace_back(std::move(record_copy));
   }
 
   rc = child->close();
@@ -69,12 +76,15 @@ RC UpdatePhysicalOperator::open(Trx *trx)
     }
     new_record.set_rid(record.rid());
 
-    // 将新值类型转换为字段目标类型
     Value real_value;
-    rc = Value::cast_to(value_, field_meta_->type(), real_value);
-    if (rc != RC::SUCCESS) {
-      LOG_WARN("failed to cast value for update. rc=%s", strrc(rc));
-      return rc;
+    if (value_.attr_type() == field_meta_->type()) {
+      real_value = value_;
+    } else {
+      rc = Value::cast_to(value_, field_meta_->type(), real_value);
+      if (OB_FAIL(rc)) {
+        LOG_WARN("failed to cast value for update. rc=%s", strrc(rc));
+        return rc;
+      }
     }
 
     // 将新值写入新记录中目标字段的位置

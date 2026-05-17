@@ -31,6 +31,7 @@ public:
   virtual ~UpdateLogicalOperator() = default;
 
   LogicalOperatorType type() const override { return LogicalOperatorType::UPDATE; }
+  OpType              get_op_type() const override { return OpType::LOGICALUPDATE; }
 
   Table              *table() const { return table_; }
   const FieldMeta    *field_meta() const { return field_meta_; }
