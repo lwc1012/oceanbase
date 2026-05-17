@@ -11,7 +11,8 @@ See the Mulan PSL v2 for more details. */
 //
 // Created by Wangyunlai on 2022/12/14.
 //
-
+#include "sql/operator/update_logical_operator.h"
+#include "sql/operator/update_physical_operator.h"
 #include "common/log/log.h"
 #include "sql/expr/expression.h"
 #include "session/session.h"
@@ -86,7 +87,9 @@ RC PhysicalPlanGenerator::create(LogicalOperator &logical_operator, unique_ptr<P
     case LogicalOperatorType::GROUP_BY: {
       return create_plan(static_cast<GroupByLogicalOperator &>(logical_operator), oper, session);
     } break;
-
+    case LogicalOperatorType::UPDATE: {
+      return create_plan(static_cast<UpdateLogicalOperator &>(logical_operator), oper, session);
+    } break;
     default: {
       ASSERT(false, "unknown logical operator type");
       return RC::INVALID_ARGUMENT;
@@ -467,5 +470,29 @@ RC PhysicalPlanGenerator::create_vec_plan(ExplainLogicalOperator &explain_oper, 
   }
 
   oper = std::move(explain_physical_oper);
+  return rc;
+}
+RC PhysicalPlanGenerator::create_plan(UpdateLogicalOperator &update_oper, unique_ptr<PhysicalOperator> &oper, Session *session)
+{
+  vector<unique_ptr<LogicalOperator>> &child_opers = update_oper.children();
+
+  unique_ptr<PhysicalOperator> child_physical_oper;
+
+  RC rc = RC::SUCCESS;
+  if (!child_opers.empty()) {
+    LogicalOperator *child_oper = child_opers.front().get();
+    rc = create(*child_oper, child_physical_oper, session);
+    if (rc != RC::SUCCESS) {
+      LOG_WARN("failed to create child physical operator. rc=%s", strrc(rc));
+      return rc;
+    }
+  }
+
+  oper = unique_ptr<PhysicalOperator>(
+      new UpdatePhysicalOperator(update_oper.table(), update_oper.field_meta(), update_oper.value()));
+
+  if (child_physical_oper) {
+    oper->add_child(std::move(child_physical_oper));
+  }
   return rc;
 }

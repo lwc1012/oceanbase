@@ -29,6 +29,30 @@ RC LsmTableEngine::insert_record(Record &record)
   return rc;
 }
 
+RC LsmTableEngine::update_record_with_trx(const Record &old_record, const Record &new_record, Trx *trx)
+{
+  LsmMvccTrx *lsm_trx = static_cast<LsmMvccTrx *>(trx);
+  ObLsmTransaction *ob_trx = lsm_trx->get_trx();
+  if (ob_trx == nullptr) {
+    LOG_WARN("no transaction context for lsm update");
+    return RC::INTERNAL;
+  }
+
+  // LSM 引擎中，对于 update 操作，通过事务插入一条新记录
+  // 使用与 insert_record 相同的方式生成新 key
+  bytes lsm_key;
+  Codec::encode(table_->table_id(), inc_id_.fetch_add(1), lsm_key);
+
+  RC rc = ob_trx->put(string_view((char *)lsm_key.data(), lsm_key.size()),
+                      string_view(new_record.data(), new_record.len()));
+  if (rc != RC::SUCCESS) {
+    LOG_WARN("failed to update record via lsm transaction. rc=%s", strrc(rc));
+    return rc;
+  }
+
+  return RC::SUCCESS;
+}
+
 RC LsmTableEngine::get_record_scanner(RecordScanner *&scanner, Trx *trx, ReadWriteMode mode)
 {
   scanner = new LsmRecordScanner(table_, db_->lsm(), trx);

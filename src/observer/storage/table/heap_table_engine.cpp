@@ -103,6 +103,67 @@ RC HeapTableEngine::delete_record(const Record &record)
   return rc;
 }
 
+RC HeapTableEngine::update_record_with_trx(const Record &old_record, const Record &new_record, Trx *trx)
+{
+  RC rc = RC::SUCCESS;
+
+  // 1. 从所有索引中删除旧记录的条目
+  for (Index *index : indexes_) {
+    rc = index->delete_entry(old_record.data(), &old_record.rid());
+    if (rc != RC::SUCCESS) {
+      LOG_WARN("failed to delete old entry from index. table=%s, index=%s, rid=%s, rc=%s",
+               table_meta_->name(), index->index_meta().name(), old_record.rid().to_string().c_str(), strrc(rc));
+      return rc;
+    }
+  }
+
+  // 2. 使用页面级的 update_record 原地更新记录数据
+  rc = record_handler_->visit_record(old_record.rid(), [&new_record](Record &inplace_record) -> bool {
+    memcpy(inplace_record.data(), new_record.data(), new_record.len());
+    return true;
+  });
+  if (OB_FAIL(rc)) {
+    LOG_WARN("failed to update record at page level. rid=%s, rc=%s", old_record.rid().to_string().c_str(), strrc(rc));
+    // 回滚索引删除
+    for (Index *index : indexes_) {
+      RC rc2 = index->insert_entry(old_record.data(), &old_record.rid());
+      if (rc2 != RC::SUCCESS) {
+        LOG_PANIC("failed to rollback index delete. table=%s, index=%s, rid=%s, rc=%s",
+                  table_meta_->name(), index->index_meta().name(), old_record.rid().to_string().c_str(), strrc(rc2));
+      }
+    }
+    return rc;
+  }
+
+  // 3. 将新记录条目插入到所有索引中
+  // 注意：这里使用 old_record.rid() 作为新记录的 RID，因为我们是原地更新
+  for (Index *index : indexes_) {
+    rc = index->insert_entry(new_record.data(), &old_record.rid());
+    if (rc != RC::SUCCESS) {
+      LOG_WARN("failed to insert new entry into index. table=%s, index=%s, rc=%s",
+               table_meta_->name(), index->index_meta().name(), strrc(rc));
+      // 如果索引插入失败，尝试回滚（恢复旧记录到索引，但旧数据已被覆盖）
+      // 这里尽量恢复
+      for (Index *idx : indexes_) {
+        idx->delete_entry(new_record.data(), &old_record.rid());
+        RC rc2 = idx->insert_entry(old_record.data(), &old_record.rid());
+        if (rc2 != RC::SUCCESS) {
+          LOG_PANIC("failed to rollback index after update. table=%s, index=%s, rid=%s, rc=%s",
+                    table_meta_->name(), idx->index_meta().name(), old_record.rid().to_string().c_str(), strrc(rc2));
+        }
+      }
+      // 恢复记录数据
+      record_handler_->visit_record(old_record.rid(), [&old_record](Record &inplace_record) -> bool {
+        memcpy(inplace_record.data(), old_record.data(), old_record.len());
+        return true;
+      });
+      return rc;
+    }
+  }
+
+  return RC::SUCCESS;
+}
+
 RC HeapTableEngine::get_record_scanner(RecordScanner *&scanner, Trx *trx, ReadWriteMode mode)
 {
   scanner = new HeapRecordScanner(table_, *data_buffer_pool_, trx, db_->log_handler(), mode, nullptr);

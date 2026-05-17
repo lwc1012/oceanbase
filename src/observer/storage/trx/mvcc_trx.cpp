@@ -172,6 +172,62 @@ RC MvccTrx::delete_record(Table *table, Record &record)
   return RC::SUCCESS;
 }
 
+RC MvccTrx::update_record(Table *table, Record &old_record, Record &new_record)
+{
+  Field begin_field;
+  Field end_field;
+  trx_fields(table, begin_field, end_field);
+
+  // 逻辑删除旧行：将 end_xid 设为 -trx_id_，标记为"被当前事务删除"
+  RC rc = table->visit_record(old_record.rid(), [this, table, &end_field](Record &inplace_record) -> bool {
+    RC rc = this->visit_record(table, inplace_record, ReadWriteMode::READ_WRITE);
+    if (OB_FAIL(rc)) {
+      // 如果记录不可见或并发冲突，返回 false 表示更新失败
+      return false;
+    }
+
+    end_field.set_int(inplace_record, -trx_id_);
+    return true;
+  });
+
+  if (OB_FAIL(rc)) {
+    LOG_WARN("failed to visit old record for update. rid=%s, rc=%s", old_record.rid().to_string().c_str(), strrc(rc));
+    return rc;
+  }
+
+  // 插入新行：将 begin_xid 设为 -trx_id_，end_xid 设为 max_trx_id
+  begin_field.set_int(new_record, -trx_id_);
+  end_field.set_int(new_record, trx_kit_.max_trx_id());
+
+  rc = table->insert_record(new_record);
+  if (rc != RC::SUCCESS) {
+    LOG_WARN("failed to insert new record for update. rc=%s", strrc(rc));
+    // 新行插入失败，需要恢复旧行的 end_xid
+    table->visit_record(old_record.rid(), [this, &end_field](Record &inplace_record) -> bool {
+      (void)this;
+      end_field.set_int(inplace_record, trx_kit_.max_trx_id());
+      return true;
+    });
+    return rc;
+  }
+
+  // 记录日志：先记录 DELETE 日志（旧行），再记录 INSERT 日志（新行）
+  rc = log_handler_.delete_record(trx_id_, table, old_record.rid());
+  ASSERT(rc == RC::SUCCESS, "failed to append delete record log for update. trx id=%d, table id=%d, old rid=%s, rc=%s",
+         trx_id_, table->table_id(), old_record.rid().to_string().c_str(), strrc(rc));
+
+  rc = log_handler_.insert_record(trx_id_, table, new_record.rid());
+  ASSERT(rc == RC::SUCCESS, "failed to append insert record log for update. trx id=%d, table id=%d, new rid=%s, rc=%s",
+         trx_id_, table->table_id(), new_record.rid().to_string().c_str(), strrc(rc));
+
+  // 记录操作：先 DELETE（旧行），再 INSERT（新行）
+  // 注意顺序：rollback 时会逆序回滚，先回滚 INSERT（删除新行），再回滚 DELETE（恢复旧行），保证正确
+  operations_.push_back(Operation(Operation::Type::DELETE, table, old_record.rid()));
+  operations_.push_back(Operation(Operation::Type::INSERT, table, new_record.rid()));
+
+  return RC::SUCCESS;
+}
+
 RC MvccTrx::visit_record(Table *table, Record &record, ReadWriteMode mode)
 {
   Field begin_field;
@@ -315,6 +371,11 @@ RC MvccTrx::commit_with_trx_id(int32_t commit_xid)
                rid.to_string().c_str(), strrc(rc));
       } break;
 
+      case Operation::Type::UPDATE: {
+        // update 操作在 MvccTrx 中是通过 DELETE + INSERT 组合实现的，所以这里不应出现 UPDATE 类型的操作
+        ASSERT(false, "unexpected UPDATE operation in commit. update should be decomposed into DELETE + INSERT");
+      } break;
+
       default: {
         ASSERT(false, "unsupported operation. type=%d", static_cast<int>(operation.type()));
       }
@@ -392,6 +453,11 @@ RC MvccTrx::rollback()
         rc = table->visit_record(rid, record_updater);
         ASSERT(rc == RC::SUCCESS, "failed to get record while committing. rid=%s, rc=%s",
                rid.to_string().c_str(), strrc(rc));
+      } break;
+
+      case Operation::Type::UPDATE: {
+        // update 操作在 MvccTrx 中是通过 DELETE + INSERT 组合实现的，所以这里不应出现 UPDATE 类型的操作
+        ASSERT(false, "unexpected UPDATE operation in rollback. update should be decomposed into DELETE + INSERT");
       } break;
 
       default: {
