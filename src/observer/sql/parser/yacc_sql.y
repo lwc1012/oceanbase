@@ -99,6 +99,8 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
         AND
         SET
         ON
+        INNER
+        JOIN
         LOAD
         DATA
         INFILE
@@ -132,7 +134,7 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
   vector<Value> *                            value_list;
   vector<ConditionSqlNode> *                 condition_list;
   vector<RelAttrSqlNode> *                   rel_attr_list;
-  vector<string> *                           relation_list;
+  RelSqlNode *                              rel_sql_node;
   vector<string> *                           key_list;
   char *                                     cstring;
   int                                        number;
@@ -148,7 +150,7 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
 %destructor { delete $$; } <value_list>
 %destructor { delete $$; } <condition_list>
 // %destructor { delete $$; } <rel_attr_list>
-%destructor { delete $$; } <relation_list>
+%destructor { delete $$; } <rel_sql_node>
 %destructor { delete $$; } <key_list>
 
 %token <number> NUMBER
@@ -173,7 +175,8 @@ UnboundAggregateExpr *create_aggregate_expression(const char *aggregate_name,
 %type <cstring>             storage_format
 %type <key_list>            primary_key
 %type <key_list>            attr_list
-%type <relation_list>       rel_list
+%type <rel_sql_node>        rel_list
+%type <rel_sql_node>        join_list
 %type <expression>          expression
 %type <expression>          aggregate_expression
 %type <expression_list>     expression_list
@@ -492,13 +495,22 @@ select_stmt:        /*  select 语句的语法解析树*/
       }
 
       if ($4 != nullptr) {
-        $$->selection.relations.swap(*$4);
+        $$->selection.relations.swap($4->relations);
+        if (!$4->join_conditions.empty()) {
+          $$->selection.conditions.insert($$->selection.conditions.end(),
+                                          $4->join_conditions.begin(),
+                                          $4->join_conditions.end());
+        }
         delete $4;
       }
 
       if ($5 != nullptr) {
-        $$->selection.conditions.swap(*$5);
-        delete $5;
+        if ($5 != nullptr) {
+          $$->selection.conditions.insert($$->selection.conditions.end(),
+                                          $5->begin(),
+                                          $5->end());
+          delete $5;
+        }
       }
 
       if ($6 != nullptr) {
@@ -594,19 +606,60 @@ relation:
       $$ = $1;
     }
     ;
+
+join_list:
+    INNER JOIN relation ON condition_list {
+      $$ = new RelSqlNode;
+      $$->relations.push_back($3);
+      if ($5 != nullptr) {
+        $$->join_conditions.insert($$->join_conditions.end(), $5->begin(), $5->end());
+        delete $5;
+      }
+    }
+    | JOIN relation ON condition_list {
+      $$ = new RelSqlNode;
+      $$->relations.push_back($2);
+      if ($4 != nullptr) {
+        $$->join_conditions.insert($$->join_conditions.end(), $4->begin(), $4->end());
+        delete $4;
+      }
+    }
+    | join_list INNER JOIN relation ON condition_list {
+      $$ = $1;
+      $$->relations.push_back($4);
+      if ($6 != nullptr) {
+        $$->join_conditions.insert($$->join_conditions.end(), $6->begin(), $6->end());
+        delete $6;
+      }
+    }
+    | join_list JOIN relation ON condition_list {
+      $$ = $1;
+      $$->relations.push_back($3);
+      if ($5 != nullptr) {
+        $$->join_conditions.insert($$->join_conditions.end(), $5->begin(), $5->end());
+        delete $5;
+      }
+    }
+    ;
+
 rel_list:
     relation {
-      $$ = new vector<string>();
-      $$->push_back($1);
+      $$ = new RelSqlNode;
+      $$->relations.push_back($1);
+    }
+    | relation join_list {
+      $$ = $2;
+      if ($$ != nullptr) {
+        $$->relations.insert($$->relations.begin(), $1);
+      }
     }
     | relation COMMA rel_list {
       if ($3 != nullptr) {
         $$ = $3;
       } else {
-        $$ = new vector<string>;
+        $$ = new RelSqlNode;
       }
-
-      $$->insert($$->begin(), $1);
+      $$->relations.insert($$->relations.begin(), $1);
     }
     ;
 

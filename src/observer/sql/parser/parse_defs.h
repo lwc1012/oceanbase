@@ -94,6 +94,12 @@ struct SelectSqlNode
   vector<unique_ptr<Expression>> group_by;     ///< group by clause
 };
 
+struct RelSqlNode
+{
+  vector<string>           relations;      ///< relation names from FROM/JOIN clauses
+  vector<ConditionSqlNode> join_conditions;///< conditions from JOIN ... ON
+};
+
 /**
  * @brief 算术表达式计算的语法树
  * @ingroup SQLParser
