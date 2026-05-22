@@ -64,6 +64,23 @@ TEST(ParserTest, DISABLED_group_by_test)
   }
 }
 
+TEST(ParserTest, join_parse_test)
+{
+  ParsedSqlResult result;
+  {
+    const char *sql = "select a from t1 inner join t2 on t1.a = t2.a";
+    ASSERT_EQ(parse(sql, &result), RC::SUCCESS);
+  }
+  {
+    const char *sql = "select t1.a,t2.b from t1 join t2 on t1.a = t2.a";
+    ASSERT_EQ(parse(sql, &result), RC::SUCCESS);
+  }
+  {
+    const char *sql = "select a from t1 inner join t2 on t1.a = t2.a inner join t3 on t2.b = t3.b";
+    ASSERT_EQ(parse(sql, &result), RC::SUCCESS);
+  }
+}
+
 int main(int argc, char **argv)
 {
 
